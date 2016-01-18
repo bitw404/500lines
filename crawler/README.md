@@ -1,4 +1,4 @@
 ## 爬虫
 
-1. lgasync  
-拉勾网爬虫，用tornado实现http异步请求，motor实现数据库异步存储。
+- [xs00](https://github.com/bitmonk404/500lines/blob/master/crawler/xs00.py)
+不可能世界爬虫，基础版。
