@@ -1,5 +1,8 @@
 # 拉钩网爬虫。
-# Tornado异步。
+# Tornado实现异步爬取数据。使用队列的方式控制并发数量。
+# 使用BeautifulSoup解析DOM树。
+# ajax逆向工程，实现ajax动态数据爬取。
+# 使用motor存储数据到mongodb。
 
 from tornado import httpclient, gen, queues, ioloop
 from bs4 import BeautifulSoup as Soup
