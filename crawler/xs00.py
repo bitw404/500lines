@@ -12,71 +12,79 @@ import os.path
 import time
 import json
 
-pages = ["http://www.8kana.com/home/bookclass/bookshelf/0-0-0-0-0-0-0-1-2?page=" + str(index + 1) + ".html" for index in range(48)]
 db = TinyDB(os.path.abspath(os.path.dirname(__file__)) + "/db.json")
-    
-@gen.coroutine
-def make_book(d, id):
-    return {
-        "title": d(".bookContain_l_conh2 h2").text(),
-        "author": d("a.authorName").text(),
-        "score": d(".bookContain_r1_upsp span").text(),
-        "hot_degree": d("span.imformPopularity").eq(0).text(),
-        "word_number": d("span.imformPopularity").eq(1).text(),
-        "fuck_times": d("span.imformPopularity").eq(2).text()
-    }
+book_index = 1
 
 @gen.coroutine
-def get_book_links(page):
-    try:
-        html = yield httpclient.AsyncHTTPClient().fetch(page)
-        d = pq(html.body.decode("utf-8"))
-        return d(".right.classPage_books_B_R").children("a").map(lambda i, e: "http://www.8kana.com" + pq(e).attr("href"))
-    except Exception as e:
-        print("get_book_links Exception", e)
-        return []
-
-@gen.coroutine
-def get_book_infos(links):
+def books_handler(links):
+    q = queues.Queue()
     for link in links:
+        yield q.put(link)
+
+    @gen.coroutine
+    def handle_book_by_link():
+        global book_index
+        link = yield q.get()
         try:
             html = yield httpclient.AsyncHTTPClient().fetch(link)
             d = pq(html.body.decode("utf-8"))
-            id = link.split("http://")[1].split("/")[2].split(".")[0]
-            book = yield make_book(d, id)
-
-            # 这里进行最终的数据处理
-            if not book:
-                continue
-            db.insert(book)
-            print("{} done.".format(book["title"]))
-
+            db.insert({
+                "title": d(".bookContain_l_conh2 > h2").text(),
+                "author": d(".authorName").text(),
+                "score": d(".bookContain_r1_upsp span").text()
+            })
+            print("book {} done:".format(book_index), d(".bookContain_l_conh2 > h2").text())
         except Exception as e:
-            print("get_book_infos Exception", e)
+            print("get_book_by_link failed.", e)
+        finally:
+            book_index += 1
+            q.task_done()
+
+    @gen.coroutine
+    def worker():
+        while True:
+            yield handle_book_by_link()
+
+    for _ in range(10):
+        worker()
+    yield q.join()
 
 @gen.coroutine
-def main():
+def get_links():
+    links = []
+    q = queues.Queue()
+    for page in ["http://www.8kana.com/home/bookclass/bookshelf/0-0-0-0-0-0-0-1-2?page=" + str(index + 1) + ".html" for index in range(49)]:
+        yield q.put(page)
+
     @gen.coroutine
-    def get_books():
+    def get_perpage_links():
         page = yield q.get()
         try:
-            links = yield get_book_links(page)
-            yield get_book_infos(links)
+            html = yield httpclient.AsyncHTTPClient().fetch(page)
+            d = pq(html.body.decode("utf-8"))
+            return d(".right.classPage_books_B_R > a").map(lambda i, e: "http://www.8kana.com" + pq(e).attr("href"))
+        except Exception as e:
+            print("get_perpage_links failed.", e)
+            return []
         finally:
             q.task_done()
 
     @gen.coroutine
     def worker():
         while True:
-            yield get_books()
+            perpage_links = yield get_perpage_links()
+            links.extend(perpage_links)
 
-    start = time.time()
-    q = queues.Queue()
-    for page in pages:
-        q.put(page)
     for _ in range(10):
         worker()
     yield q.join()
+    return links
+
+@gen.coroutine
+def main():
+    start = time.time()
+    links = yield get_links()
+    yield books_handler(links)
     print("done in {} seconds.".format(time.time() - start))
 
 if __name__ == "__main__":
