@@ -1,164 +1,150 @@
-# xs00.py增强功能版本。
-
 # 增加功能：
-# 1、评论ajax动态数据爬取。
+# 1、评论ajax动态数据爬取。逆向分析ajax数据请求。
 # 2、小说内容数据爬取。
 # 3、使用motor异步存储数据到mongodb。
 
-from tornado import gen, httpclient, ioloop, queues
+from tornado import ioloop, httpclient, gen, queues
 from pyquery import PyQuery as pq
+from motor.motor_tornado import MotorClient
 import time
 import json
-from motor.motor_tornado import MotorClient
-
-pages = ["http://www.8kana.com/home/bookclass/bookshelf/0-0-0-0-0-0-0-1-2?page=" + str(index + 1) + ".html" for index in range(48)]
 
 client = MotorClient("localhost", 27017)
-db = client.xsdb
-collection_novel = db.novel
+db = client["8kana"]
+c_books = db.books
 
 @gen.coroutine
-def get_perpage_comments(id, page_index):
-    try:
-        # 逆向模拟ajax get请求
-        html = yield httpclient.AsyncHTTPClient().fetch("http://www.8kana.com/home/comment/list?item=1&id=" + str(id) + "&type=2&SubType=0&page=" + str(page_index))
-    except Exception as e:
-        print("get_perpage_comments failed.", e)
-        return []
-        
+def get_comments(d):
     comments = []
-    d = pq(html.body.decode("utf-8"))
-    links = d(".essenceBook_C_Title_font").map(lambda i, e: "http://www.8kana.com" + pq(e).attr("href"))
-    
-    for link in links:
-        try:
+    id = d(".chapter_con_more > a").attr("href").split("/")[2].split(".")[0]
+    try:
+        links = []
+        html = yield httpclient.AsyncHTTPClient().fetch("http://www.8kana.com/home/ajax/ajaxGetBookCommentNum/" + str(id), method = "POST", allow_nonstandard_methods = True)
+        comment_num = int(json.loads(html.body.decode("utf-8"))["CommentNum"])
+        page_num = comment_num // 10 if comment_num % 10 == 0 else comment_num // 10 + 1
+
+        for page in range(page_num):
+            html = yield httpclient.AsyncHTTPClient().fetch("http://www.8kana.com/home/comment/list?item=1&id=" + str(id) + "&type=2&SubType=0&page=" + str(page + 1))
+            d = pq(html.body.decode("utf-8"))
+            page_links = d(".clearfix.essenceBook_C_Title > a").map(lambda i, e: "http://www.8kana.com" + pq(e).attr("href"))
+            links.extend(page_links)
+        
+        for link in links:
             html = yield httpclient.AsyncHTTPClient().fetch(link)
             d = pq(html.body.decode("utf-8"))
-            comments.append(d(".BookDetails_In_p").html())
-        except Exception as e:
-            print("get comment with link failed.", e)
-            continue
-    return comments
-    
-@gen.coroutine
-def get_comments(id):
-    comments = []
-    try:
-        # 逆向模拟ajax post请求
-        # allow_nonstandard_methods = True    允许post请求body为None
-        html = yield httpclient.AsyncHTTPClient().fetch("http://www.8kana.com/home/ajax/ajaxGetBookCommentNum/" + id, method = "POST", allow_nonstandard_methods = True)
+            comments.append({
+                "user": d(".left.sageCity_BookDetails_Name_T_a.manColor").text(),
+                "title": d(".left.sageCity_BookDetails_Title_L").text(),
+                "content": d(".BookDetails_In_p").html()
+            })
+
+        return comments
     except Exception as e:
-        print("get commnet number failed.", e)
+        print("get comments failure.")
         return []
 
-    comment_number = json.loads(html.body.decode("utf-8"))["CommentNum"]
-    if comment_number == 0:
-        return []
-    if comment_number <= 10:
-        comment_page = 1
-    elif comment_number % 10 != 0:
-        comment_page = comment_number // 10 + 1
-    else:
-        comment_page = comment_number // 10
-
-    for index in range(comment_page):
-        perpage_comments = yield get_perpage_comments(id, index + 1)
-        comments.extend(perpage_comments)
-    return comments
-
 @gen.coroutine
-def get_content_by_link(link):
-    try:
-        html = yield httpclient.AsyncHTTPClient().fetch(link)
-    except Exception as e:
-        print("get_content_by_link failed.", e)
-        return ()
-
-    d = pq(html.body.decode("utf-8"))
-    return d(".readbook_title").text(), d(".myContent").text()
-
-@gen.coroutine
-def get_contents(id):
+def get_contents(d):
     contents = []
+    id = d(".chapter_con_more > a").attr("href").split("/")[2].split(".")[0]
     try:
-        html = yield httpclient.AsyncHTTPClient().fetch("http://www.8kana.com/list/" + id + ".html")
+        html = yield httpclient.AsyncHTTPClient().fetch("http://www.8kana.com/list/" + str(id) + ".html")
+        d = pq(html.body.decode("utf-8"))
+        links = d(".nolooking > a").map(lambda i, e: "http://www.8kana.com" + pq(e).attr("href"))
+
+        for link in links:
+            html = yield httpclient.AsyncHTTPClient().fetch(link)
+            d = pq(html.body.decode("utf-8"))
+            contents.append({
+                "title": d(".readbook_title").text(),
+                "content": d(".myContent").html()
+            })
+
+        return contents
     except Exception as e:
-        print("get contents link failed.", e)
+        print("get contents failure.")
         return []
 
-    d = pq(html.body.decode("utf-8"))
-    links = d(".informList a").filter(lambda i, e: pq(e).attr("href").startswith("/read")).map(lambda i, e: "http://www.8kana.com" + pq(e).attr("href"))
-    for link in links:
-        content = yield get_content_by_link(link)
-        contents.append(content)
-    return contents
-    
 @gen.coroutine
-def make_book(d, id):
-    comments = yield get_comments(id)
-    contents = yield get_contents(id)
+def make_book(d):
+    comments = yield get_comments(d)
+    contents = yield get_contents(d)
     return {
-        "title": d(".bookContain_l_conh2 h2").text(),
-        "author": d("a.authorName").text(),
-        "score": d(".bookContain_r1_upsp span").text(),
-        "hot_degree": d("span.imformPopularity").eq(0).text(),
-        "word_number": d("span.imformPopularity").eq(1).text(),
-        "fuck_times": d("span.imformPopularity").eq(2).text(),
+        "title": d(".bookContain_l_conh2 > h2").text(),
+        "author": d(".authorName").text(),
+        "score": d(".bookContain_r1_upsp > span").text(),
+        "hot": d(".imformPopularity").eq(0).text(),
+        "type": d(".bookContain_l_consp1").text(),
         "comments": comments,
         "contents": contents
     }
 
 @gen.coroutine
-def get_book_links(page):
-    try:
-        html = yield httpclient.AsyncHTTPClient().fetch(page)
-        d = pq(html.body.decode("utf-8"))
-        return d(".right.classPage_books_B_R").children("a").map(lambda i, e: "http://www.8kana.com" + pq(e).attr("href"))
-    except Exception as e:
-        print("get_book_links Exception", e)
-        return []
+def get_links():
+    links = []
+    q = queues.Queue()
+    for page in ["http://www.8kana.com/home/bookclass/bookshelf/0-0-0-0-0-0-0-1-2?page=" + str(index + 1) + ".html" for index in range(52)]:
+        yield q.put(page)
 
-@gen.coroutine
-def get_book_infos(links):
-    for link in links:
-        try:
-            html = yield httpclient.AsyncHTTPClient().fetch(link)
-            d = pq(html.body.decode("utf-8"))
-            id = link.split("http://")[1].split("/")[2].split(".")[0]
-            book = yield make_book(d, id)
-
-            # 这里进行最终的数据处理
-            if not book:
-                continue
-            yield collection_novel.insert(book)
-            print("{} done.".format(book["title"]))
-
-        except Exception as e:
-            print("get_book_infos Exception", e)
-
-@gen.coroutine
-def main():
     @gen.coroutine
-    def get_books():
+    def get_page_links():
         page = yield q.get()
         try:
-            links = yield get_book_links(page)
-            yield get_book_infos(links)
-        finally:
-            q.task_done()
+            html = yield httpclient.AsyncHTTPClient().fetch(page)
+            d = pq(html.body.decode("utf-8"))
+            return d(".right.classPage_books_B_R > a").map(lambda i, e: "http://www.8kana.com" + pq(e).attr("href"))
+        except Exception as e:
+            print("get page links failure.")
+            return []
 
     @gen.coroutine
     def worker():
         while True:
-            yield get_books()
+            page_links = yield get_page_links()
+            links.extend(page_links)
+            q.task_done()
 
-    start = time.time()
-    q = queues.Queue()
-    for page in pages:
-        q.put(page)
     for _ in range(10):
         worker()
     yield q.join()
+    return links
+
+@gen.coroutine
+def save_books(links):
+    q = queues.Queue()
+    for link in links:
+        yield q.put(link)
+
+    @gen.coroutine
+    def get_book():
+        link = yield q.get()
+        try:
+            html = yield httpclient.AsyncHTTPClient().fetch(link)
+            d = pq(html.body.decode("utf-8"))
+            book = yield make_book(d)
+            return book
+        except Exception as e:
+            print("get book failure.")
+            return {}
+
+    @gen.coroutine
+    def worker():
+        while True:
+            book = yield get_book()
+            if book:
+                yield c_books.insert(book)
+                print("get book {} done.".format(book["title"]))
+            q.task_done()
+
+    for _ in range(10):
+        worker()
+    yield q.join()
+
+@gen.coroutine
+def main():
+    start = time.time()
+    links = yield get_links()
+    yield save_books(links)
     print("done in {} seconds.".format(time.time() - start))
 
 if __name__ == "__main__":
