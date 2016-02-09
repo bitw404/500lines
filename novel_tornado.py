@@ -1,7 +1,8 @@
-# 增加功能：
-# 1、评论ajax动态数据爬取。逆向分析ajax数据请求。
-# 2、小说内容数据爬取。
-# 3、使用motor异步存储数据到mongodb。
+# http://www.8kana.com/ 不可能的世界小说网站爬虫项目。
+
+# Tornado实现异步爬取数据。使用队列的方式控制并发数量。
+# pyquery解析dom树。
+# 使用motor异步存储数据到mongodb。
 
 from tornado import ioloop, httpclient, gen, queues
 from pyquery import PyQuery as pq
