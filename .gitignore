@@ -4,3 +4,5 @@ __pycache__
 db.json
 db.jl
 db.csv
+full
+*.log
