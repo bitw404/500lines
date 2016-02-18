@@ -4,7 +4,7 @@ BOT_NAME = 'scrapytutorial'
 SPIDER_MODULES = ['scrapytutorial.spiders']
 NEWSPIDER_MODULE = 'scrapytutorial.spiders'
 
-LOG_FILE = 'me.log'
+# LOG_FILE = 'me.log'
 LOG_LEVEL = 'INFO'
 
 # 同时处理pipeline的最大并发数
@@ -27,8 +27,17 @@ DOWNLOAD_TIMEOUT = 10
 # }
 
 ITEM_PIPELINES = {
-   'scrapytutorial.pipelines.NovelPipeline': 300,
+    'scrapy.pipelines.images.ImagesPipeline': 1,
+    'scrapytutorial.pipelines.NovelPipeline': 300,
 }
+
+# imgurls对应的是items中的field
+IMAGES_URLS_FIELD = 'imgurls'
+IMAGES_STORE = r'.'
+# IMAGES_THUMBS = {
+    # 'small': (50, 50),
+    # 'big': (270, 270),
+# }
 
 USER_AGENT = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_3) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/48.0.2564.109 Safari/537.36'
 

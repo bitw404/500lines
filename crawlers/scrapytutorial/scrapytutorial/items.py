@@ -15,6 +15,7 @@ class BookItem(scrapy.Item):
     score = scrapy.Field()
     hot = scrapy.Field()
     wcount = scrapy.Field()
+    imgurls = scrapy.Field()
 
 class ArticleItem(scrapy.Item):
     book = scrapy.Field()

@@ -26,6 +26,8 @@ class NovelSpider(CrawlSpider):
         book['score'] = response.css('.bookContain_r1_upsp > span::text').extract_first()
         book['hot'] = response.css('.imformPopularity::text')[0].extract().strip()
         book['wcount'] = response.css('.imformPopularity::text')[1].extract().strip()
+        # 注意：这里的url是复数，即时只有一个，也要放在list中。
+        book['imgurls'] = response.css('.bookContainImgBox img::attr("src")').extract()
         yield Request(url='http://www.8kana.com/home/ajax/ajaxGetBookCommentNum/'+str(book['_id']), callback=self.parse_comment, meta={'book_id': book['_id']}, method='POST')
         yield book
 
