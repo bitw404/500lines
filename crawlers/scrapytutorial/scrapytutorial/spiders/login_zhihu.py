@@ -2,6 +2,7 @@
 import scrapy
 from scrapy.http import Request, FormRequest
 from scrapy.utils.response import open_in_browser
+from scrapytutorial.settings import HEADERS
 
 class LoginZhihuSpider(scrapy.Spider):
     name = "login_zhihu"
@@ -17,14 +18,6 @@ class LoginZhihuSpider(scrapy.Spider):
             'phone_num': 'xxoo',
             'password': 'ooxx',
         }
-        self.headers = {
-            'Accept': '*/*',
-            'Accept-Encoding': 'gzip, deflate',
-            'Accept-Language': 'zh-CN,zh;q=0.8,en;q=0.6,zh-TW;q=0.4,ja;q=0.2',
-            'Connection': 'keep-alive',
-            'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-            'X-Requested-With': 'XMLHttpRequest',
-        }
 
     def parse(self, response):
         return FormRequest.from_response(
@@ -32,7 +25,7 @@ class LoginZhihuSpider(scrapy.Spider):
             url = self.login_url,
             method = 'POST',
             formdata = self.data,
-            headers = self.headers,
+            headers = HEADERS,
             callback = self.after_login,
             meta = {'cookiejar': 1},
         )
