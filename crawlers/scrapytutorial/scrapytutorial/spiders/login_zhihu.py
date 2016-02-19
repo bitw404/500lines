@@ -7,9 +7,7 @@ from scrapytutorial.settings import HEADERS
 class LoginZhihuSpider(scrapy.Spider):
     name = "login_zhihu"
     allowed_domains = ["zhihu.com"]
-
     start_urls = ['https://www.zhihu.com/#signin']
-    
     def __init__(self, *args, **kwargs):
         super(LoginZhihuSpider, self).__init__(*args, **kwargs)
         self.login_url = 'https://www.zhihu.com/login/phone_num'
@@ -18,7 +16,6 @@ class LoginZhihuSpider(scrapy.Spider):
             'phone_num': 'xxoo',
             'password': 'ooxx',
         }
-
     def parse(self, response):
         return FormRequest.from_response(
             response,
@@ -29,7 +26,6 @@ class LoginZhihuSpider(scrapy.Spider):
             callback = self.after_login,
             meta = {'cookiejar': 1},
         )
-
     def after_login(self, response):
         return Request(
             url = self.zhihu_url, 
@@ -37,6 +33,5 @@ class LoginZhihuSpider(scrapy.Spider):
             dont_filter = True, 
             meta = {'cookiejar': response.meta['cookiejar']}
         )
-
     def end_login(self, response):
         open_in_browser(response)
